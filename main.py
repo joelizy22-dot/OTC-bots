@@ -2,33 +2,45 @@ import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-PORT = int(os.environ.get("PORT", 10000))
+PORT = int(os.getenv("PORT", 10000))
 
-class Handler(BaseHTTPRequestHandler):
+class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Bot is running!")
+        self.wfile.write(b"OK - Bot is running")
+    def log_message(self, format, *args):
+        return  # silence logs
 
-def run_web():
-    HTTPServer(('0.0.0.0', PORT), Handler).serve_forever()
+def start_web():
+    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
+    server.serve_forever()
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Bot is LIVE on Render!\nSend /status")
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Bot is LIVE!\n\nSend /status to check.")
 
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🟢 Running!")
+async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🟢 Running on Render - Ready for Pocket Option setup!")
 
-if BOT_TOKEN:
-    threading.Thread(target=run_web, daemon=True).start()
-    print(f"Web on {PORT}, Bot starting...")
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("status", status))
+def main():
+    if not BOT_TOKEN:
+        print("ERROR: TELEGRAM_BOT_TOKEN missing! Add it in Render > Environment")
+        # Keep web alive so Render doesn't crash
+        start_web()
+        return
+
+    # Start web server for Render
+    threading.Thread(target=start_web, daemon=True).start()
+    print(f"Web server on port {PORT}")
+    print("Starting Telegram bot...")
+
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start_cmd))
+    app.add_handler(CommandHandler("status", status_cmd))
     app.run_polling()
-else:
-    print("ERROR: TELEGRAM_BOT_TOKEN not set!")
-    run_web()
+
+if __name__ == "__main__":
+    main()
